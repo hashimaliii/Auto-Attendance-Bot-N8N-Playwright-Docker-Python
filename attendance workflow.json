@@ -1,0 +1,95 @@
+{
+  "name": "attendance workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "c94d4b75-d8f2-470d-96ea-0e0b209ad1c9",
+      "name": "Webhook",
+      "webhookId": "1abbf8eb-ade5-4c72-919f-e119c34df6b3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Safely look for the text in the different places WhatsApp might put it\nconst text = $input.item.json.body?.data?.message?.extendedTextMessage?.text \n          || $input.item.json.body?.data?.message?.conversation \n          || \"\";\n\n// Use Regex to find the Google Meet link\nconst meetLinkMatch = text.match(/https:\\/\\/meet\\.google\\.com\\/[a-z0-9-]+/i);\n\n// If a link is found, pass it to the next step. If not, stop the workflow.\nif (meetLinkMatch) {\n    return { url: meetLinkMatch[0] };\n} else {\n    return []; // Stops execution (ignores random chatter)\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "c088763b-59fe-4f3f-a8db-9708dfea4d08",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:5000/join",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ $json.url }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "4e1f1470-9737-4aef-a9ef-3a3238b7eff0",
+      "name": "HTTP Request"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "b7dd8a45-0da1-42ee-bb2c-b7e2a873bd3d",
+  "meta": {
+    "instanceId": "86a5a291f0f6201c2d59dfdc79b138fda49e605d9bb6b96357d14b8f858eeac3"
+  },
+  "id": "zozoIuiZv9Ckks3k",
+  "tags": []
+}
