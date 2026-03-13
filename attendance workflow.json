@@ -43,7 +43,9 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "timeout": 300000
+        }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
@@ -138,7 +140,7 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "3410c176-b8f9-4657-a614-520b86434802",
+  "versionId": "2d3d227f-00d2-43ff-b638-328a93902529",
   "meta": {
     "instanceId": "86a5a291f0f6201c2d59dfdc79b138fda49e605d9bb6b96357d14b8f858eeac3"
   },
