@@ -54,38 +54,30 @@
         0
       ],
       "id": "4e1f1470-9737-4aef-a9ef-3a3238b7eff0",
-      "name": "HTTP Request"
+      "name": "HTTP Request",
+      "alwaysOutputData": true,
+      "executeOnce": true
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "http://evolution:8080/message/sendText/ClassBot",
+        "url": "http://host.docker.internal:8080/message/sendText/ClassBot",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "apikey",
               "value": "hashim_secret_key"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         },
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "number",
-              "value": "={{ $node[\"Webhook\"].json[\"body\"][\"data\"][\"key\"][\"remoteJid\"] }}"
-            },
-            {
-              "name": "text",
-              "value": "✅ Bot Status: I have successfully joined the class! 🎓"
-            },
-            {
-              "name": "delay",
-              "value": "1200"
-            }
-          ]
-        },
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"923226088347@s.whatsapp.net\",\n  \"textMessage\": {\n    \"text\": \"✅ Bot Status: I have successfully joined the class! 🎓\"\n  }\n}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -140,7 +132,7 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "2d3d227f-00d2-43ff-b638-328a93902529",
+  "versionId": "1353d362-c94b-4c8a-83d3-8486a1e020d0",
   "meta": {
     "instanceId": "86a5a291f0f6201c2d59dfdc79b138fda49e605d9bb6b96357d14b8f858eeac3"
   },
