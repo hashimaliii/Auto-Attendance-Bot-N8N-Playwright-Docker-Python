@@ -11,7 +11,7 @@
       "typeVersion": 2.1,
       "position": [
         0,
-        0
+        -112
       ],
       "id": "c94d4b75-d8f2-470d-96ea-0e0b209ad1c9",
       "name": "Webhook",
@@ -19,7 +19,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Safely look for the text in the different places WhatsApp might put it\nconst text = $input.item.json.body?.data?.message?.extendedTextMessage?.text \n          || $input.item.json.body?.data?.message?.conversation \n          || \"\";\n\n// Use Regex to find the Google Meet link\nconst meetLinkMatch = text.match(/https:\\/\\/meet\\.google\\.com\\/[a-z0-9-]+/i);\n\n// If a link is found, pass it to the next step. If not, stop the workflow.\nif (meetLinkMatch) {\n    return { url: meetLinkMatch[0] };\n} else {\n    return []; // Stops execution (ignores random chatter)\n}"
+        "jsCode": "let textToSearch = \"\";\nlet isEmail = false;\n\n// --- 1. DETECT THE SOURCE ---\nif ($input.item.json.body && $input.item.json.body.data) {\n    // It's a WhatsApp Message\n    textToSearch = $input.item.json.body?.data?.message?.extendedTextMessage?.text \n                || $input.item.json.body?.data?.message?.conversation \n                || \"\";\n} \nelse if ($input.item.json.subject) {\n    // It's an Email (Forwarded or Direct)\n    isEmail = true;\n    // Combine subject and body, and make it all lowercase for bulletproof searching\n    textToSearch = ($input.item.json.subject + \" \" + ($input.item.json.textPlain || $input.item.json.text || \"\")).toLowerCase();\n}\n\n// --- 2. EXTRACT THE GOOGLE MEET LINK ---\nconst meetLinkMatch = textToSearch.match(/https:\\/\\/meet\\.google\\.com\\/[a-z0-9-]+/i);\n\nif (!meetLinkMatch) {\n    return []; // Stops execution if no link is found\n}\n\n// --- 3. FILTER BY CLASS NAME (Only for Emails) ---\nif (isEmail) {\n    // Add the exact names of the classes you want to auto-attend here.\n    // MUST BE IN ALL LOWERCASE because we convert the email text to lowercase above.\n    const allowedClasses = [\n        \"devops a a\",\n        \"scd lab fall 2025\",\n        \"entrepreneurship bse a and b\",\n        \"bsse 8a\",\n        \"professional practices in it bse 8th a\"\n    ];\n\n    // Check if the email text contains ANY of the allowed class names\n    const isAllowedClass = allowedClasses.some(className => textToSearch.includes(className));\n\n    if (!isAllowedClass) {\n        // If the class isn't in your list, stop the workflow silently\n        return []; \n    }\n}\n\n// --- 4. SUCCESS: PASS LINK TO PYTHON ---\nreturn { url: meetLinkMatch[0] };"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -88,6 +88,27 @@
       ],
       "id": "dd5485dc-388b-453c-a493-29fa52690282",
       "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "options": {
+          "customEmailConfig": "[\"UNSEEN\"]"
+        }
+      },
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2.1,
+      "position": [
+        -16,
+        96
+      ],
+      "id": "b20c70ef-9c5c-468b-b5eb-4908a05f7afb",
+      "name": "Email Trigger (IMAP)",
+      "credentials": {
+        "imap": {
+          "id": "IKtQHMvqbJsy7mjS",
+          "name": "IMAP account"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -124,6 +145,17 @@
           }
         ]
       ]
+    },
+    "Email Trigger (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
@@ -132,8 +164,9 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "1353d362-c94b-4c8a-83d3-8486a1e020d0",
+  "versionId": "186848d7-63bc-47c7-937d-837b06ae183d",
   "meta": {
+    "templateCredsSetupCompleted": true,
     "instanceId": "86a5a291f0f6201c2d59dfdc79b138fda49e605d9bb6b96357d14b8f858eeac3"
   },
   "id": "zozoIuiZv9Ckks3k",
