@@ -53,6 +53,47 @@
       ],
       "id": "4e1f1470-9737-4aef-a9ef-3a3238b7eff0",
       "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://evolution:8080/message/sendText/ClassBot",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "hashim_secret_key"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $node[\"Webhook\"].json[\"body\"][\"data\"][\"key\"][\"remoteJid\"] }}"
+            },
+            {
+              "name": "text",
+              "value": "✅ Bot Status: I have successfully joined the class! 🎓"
+            },
+            {
+              "name": "delay",
+              "value": "1200"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        624,
+        0
+      ],
+      "id": "dd5485dc-388b-453c-a493-29fa52690282",
+      "name": "HTTP Request1"
     }
   ],
   "pinData": {},
@@ -78,6 +119,17 @@
           }
         ]
       ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
@@ -86,7 +138,7 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "b7dd8a45-0da1-42ee-bb2c-b7e2a873bd3d",
+  "versionId": "3410c176-b8f9-4657-a614-520b86434802",
   "meta": {
     "instanceId": "86a5a291f0f6201c2d59dfdc79b138fda49e605d9bb6b96357d14b8f858eeac3"
   },
