@@ -10,36 +10,35 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
       "position": [
-        0,
-        -112
+        6896,
+        1328
       ],
-      "id": "c94d4b75-d8f2-470d-96ea-0e0b209ad1c9",
+      "id": "39dac26f-ea36-4d69-9873-0c092ed2aada",
       "name": "Webhook",
       "webhookId": "1abbf8eb-ade5-4c72-919f-e119c34df6b3"
     },
     {
       "parameters": {
-        "jsCode": "let textToSearch = \"\";\nlet isEmail = false;\n\n// --- 1. DETECT THE SOURCE ---\nif ($input.item.json.body && $input.item.json.body.data) {\n    // It's a WhatsApp Message\n    textToSearch = $input.item.json.body?.data?.message?.extendedTextMessage?.text \n                || $input.item.json.body?.data?.message?.conversation \n                || \"\";\n} \nelse if ($input.item.json.subject) {\n    // It's an Email (Forwarded or Direct)\n    isEmail = true;\n    // Combine subject and body, and make it all lowercase for bulletproof searching\n    textToSearch = ($input.item.json.subject + \" \" + ($input.item.json.textPlain || $input.item.json.text || \"\")).toLowerCase();\n}\n\n// --- 2. EXTRACT THE GOOGLE MEET LINK ---\nconst meetLinkMatch = textToSearch.match(/https:\\/\\/meet\\.google\\.com\\/[a-z0-9-]+/i);\n\nif (!meetLinkMatch) {\n    return []; // Stops execution if no link is found\n}\n\n// --- 3. FILTER BY CLASS NAME (Only for Emails) ---\nif (isEmail) {\n    // Add the exact names of the classes you want to auto-attend here.\n    // MUST BE IN ALL LOWERCASE because we convert the email text to lowercase above.\n    const allowedClasses = [\n        \"devops a a\",\n        \"scd lab fall 2025\",\n        \"entrepreneurship bse a and b\",\n        \"bsse 8a\",\n        \"professional practices in it bse 8th a\"\n    ];\n\n    // Check if the email text contains ANY of the allowed class names\n    const isAllowedClass = allowedClasses.some(className => textToSearch.includes(className));\n\n    if (!isAllowedClass) {\n        // If the class isn't in your list, stop the workflow silently\n        return []; \n    }\n}\n\n// --- 4. SUCCESS: PASS LINK TO PYTHON ---\nreturn { url: meetLinkMatch[0] };"
+        "jsCode": "const data = $json;\n\n// Detect source: WhatsApp has body.event = \"messages.upsert\"\nconst isWhatsApp = data.body?.event === \"messages.upsert\";\n\n// Settings\nconst allowedClasses = (data.allowed_classes || \"\")\n  .split(',')\n  .map(item => item.trim().toLowerCase())\n  .filter(Boolean);\nconst targetPhone = data.whatsapp_number || \"\";\n\n// If WhatsApp → skip class matching, always allow\nif (isWhatsApp) {\n  const conversation = data.body?.data?.message?.conversation\n    || data.body?.data?.message?.extendedTextMessage?.text\n    || \"\";\n\n  const meetUrlMatch = conversation.match(/https?:\\/\\/meet\\.google\\.com\\/[a-z0-9-]+/gi);\n  const meetUrl = meetUrlMatch ? meetUrlMatch[0] : null;\n\n  return [{\n    json: {\n      isAllowed:    true,\n      matchedClass: \"whatsapp\",\n      targetNumber: targetPhone,\n      meetUrl:      meetUrl\n    }\n  }];\n}\n\n// Email path — raw content may be in text, html, or textHtml\nconst rawContent = data.textHtml || data.html || data.text || data.subject || \"\";\n\n// Step 1: Extract Meet URL from raw HTML BEFORE stripping tags\n// (URLs are often inside <a href=\"...\"> and would be lost after stripping)\nconst meetUrlMatch = rawContent.match(/https?:\\/\\/meet\\.google\\.com\\/[a-z0-9-]+/gi);\nconst meetUrl = meetUrlMatch ? meetUrlMatch[0] : null;\n\n// Step 2: Strip HTML tags to get plain text for class name matching\nconst plainText = rawContent\n  .replace(/<[^>]*>/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim()\n  .toLowerCase();\n\n// Step 3: Decode HTML entities\nconst decoded = plainText\n  .replace(/&amp;/g, '&')\n  .replace(/&lt;/g, '<')\n  .replace(/&gt;/g, '>')\n  .replace(/&nbsp;/g, ' ')\n  .replace(/&quot;/g, '\"')\n  .replace(/&#[0-9]+;/g, ' ');\n\n// Step 4: Match class — if allowed_classes is empty, allow all\nlet matchedClass;\nif (allowedClasses.length === 0) {\n  // No filter configured → allow everything\n  matchedClass = \"any\";\n} else {\n  matchedClass = allowedClasses.find(cls => decoded.includes(cls));\n}\n\nreturn [{\n  json: {\n    isAllowed:    !!(matchedClass && meetUrl),\n    matchedClass: matchedClass || \"None\",\n    targetNumber: targetPhone,\n    meetUrl:      meetUrl\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        208,
-        0
+        7584,
+        1456
       ],
-      "id": "c088763b-59fe-4f3f-a8db-9708dfea4d08",
+      "id": "47ed9bcd-3301-445b-9a2f-edd34f6a41d6",
       "name": "Code in JavaScript"
     },
     {
       "parameters": {
-        "method": "POST",
         "url": "http://host.docker.internal:5000/join",
-        "sendBody": true,
-        "bodyParameters": {
+        "sendQuery": true,
+        "queryParameters": {
           "parameters": [
             {
               "name": "url",
-              "value": "={{ $json.url }}"
+              "value": "={{ $json.meetUrl }}"
             }
           ]
         },
@@ -50,10 +49,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        416,
-        0
+        8000,
+        1440
       ],
-      "id": "4e1f1470-9737-4aef-a9ef-3a3238b7eff0",
+      "id": "b52625b1-23b4-482e-ad5e-56b102495b8f",
       "name": "HTTP Request",
       "alwaysOutputData": true,
       "executeOnce": true
@@ -77,16 +76,16 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"number\": \"923226088347@s.whatsapp.net\",\n  \"textMessage\": {\n    \"text\": \"✅ Bot Status: I have successfully joined the class! 🎓\"\n  }\n}",
+        "jsonBody": "={{ JSON.stringify({ \"number\": $node[\"Code in JavaScript\"].json.targetNumber + \"@s.whatsapp.net\", \"textMessage\": { \"text\": \"✅ I have successfully joined your class! 🎓\" } }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        624,
-        0
+        8176,
+        1440
       ],
-      "id": "dd5485dc-388b-453c-a493-29fa52690282",
+      "id": "f36266eb-bceb-49aa-adab-dc1f125d4c5d",
       "name": "HTTP Request1"
     },
     {
@@ -98,10 +97,10 @@
       "type": "n8n-nodes-base.emailReadImap",
       "typeVersion": 2.1,
       "position": [
-        -16,
-        96
+        6880,
+        1616
       ],
-      "id": "b20c70ef-9c5c-468b-b5eb-4908a05f7afb",
+      "id": "ae919ed7-6966-418f-bfaa-08a94eec1ae7",
       "name": "Email Trigger (IMAP)",
       "credentials": {
         "imap": {
@@ -109,6 +108,180 @@
           "name": "IMAP account"
         }
       }
+    },
+    {
+      "parameters": {
+        "url": "http://host.docker.internal:5000/api/n8n_settings",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        7136,
+        1200
+      ],
+      "id": "7050d56f-d125-47e6-be43-2af74bec6bcf",
+      "name": "FetchSettings",
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "url": "http://host.docker.internal:5000/api/n8n_settings",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        7120,
+        1456
+      ],
+      "id": "0d5b8746-495a-4378-ad1e-b6112607ee99",
+      "name": "FetchSettings1"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        7360,
+        1312
+      ],
+      "id": "13c3857b-e451-40ac-a918-878d62fe87a4",
+      "name": "Merge",
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        7360,
+        1600
+      ],
+      "id": "e7ea32d8-0a12-45af-b7cb-18811dc19946",
+      "name": "Merge1",
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "53545a39-fe7e-4cf0-853f-650f81bcddf8",
+              "leftValue": "={{ $json.isAllowed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        7776,
+        1456
+      ],
+      "id": "a6fbe69a-27c5-48b4-a591-8b68ea8f5a8c",
+      "name": "IsAllowed?"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "http://host.docker.internal:5678/api/v1/credentials/IKtQHMvqbJsy7mjS",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "={{ $json.n8n_api_key.toString().trim() }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"data\": {\n    \"host\": \"imap.gmail.com\",\n    \"port\": 993,\n    \"secure\": true,\n    \"user\": \"{{ $json.bridge_email }}\",\n    \"password\": \"{{ $json.bridge_password }}\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        7120,
+        1696
+      ],
+      "id": "aee23413-493b-44ce-b71f-be0622149d37",
+      "name": "UpdateIMAPCredential"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "47c8cd69-cfdb-44f4-b2b2-a3fbcfe15deb",
+              "name": "allowed_classes",
+              "value": "={{ $('FetchSettings1').first().json.allowed_classes }}",
+              "type": "string"
+            },
+            {
+              "id": "3f92d9bf-d7fc-4925-b1e3-fb656513ef1d",
+              "name": "whatsapp_number",
+              "value": "={{ $('FetchSettings1').first().json.whatsapp_number }}",
+              "type": "string"
+            },
+            {
+              "id": "37bce0f7-30ad-4d5c-8107-039df0d6cff2",
+              "name": "bridge_email",
+              "value": "={{ $('FetchSettings1').first().json.bridge_email }}",
+              "type": "string"
+            },
+            {
+              "id": "63b3c3a4-9eea-4931-8b1f-7b6bc2b09db2",
+              "name": "bridge_password",
+              "value": "={{ $('FetchSettings1').first().json.bridge_password }}",
+              "type": "string"
+            },
+            {
+              "id": "7ecdba9c-2da3-4725-af7a-1ddc6c54fa82",
+              "name": "success_message",
+              "value": "={{ $('FetchSettings1').first().json.success_message }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        7360,
+        1776
+      ],
+      "id": "d6af3150-1560-4e9f-ab37-81361fe94cec",
+      "name": "PassSettings"
     }
   ],
   "pinData": {},
@@ -117,7 +290,12 @@
       "main": [
         [
           {
-            "node": "Code in JavaScript",
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "FetchSettings",
             "type": "main",
             "index": 0
           }
@@ -128,7 +306,7 @@
       "main": [
         [
           {
-            "node": "HTTP Request",
+            "node": "IsAllowed?",
             "type": "main",
             "index": 0
           }
@@ -150,7 +328,89 @@
       "main": [
         [
           {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "FetchSettings1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FetchSettings": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FetchSettings1": {
+      "main": [
+        [
+          {
+            "node": "UpdateIMAPCredential",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
             "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IsAllowed?": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UpdateIMAPCredential": {
+      "main": [
+        [
+          {
+            "node": "PassSettings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PassSettings": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
             "type": "main",
             "index": 0
           }
@@ -164,7 +424,7 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "186848d7-63bc-47c7-937d-837b06ae183d",
+  "versionId": "4960900c-036f-417f-9222-9c16b4b97212",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "86a5a291f0f6201c2d59dfdc79b138fda49e605d9bb6b96357d14b8f858eeac3"

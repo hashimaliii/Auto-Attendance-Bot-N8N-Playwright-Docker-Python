@@ -1,116 +1,184 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from playwright.sync_api import sync_playwright
 import os
 import threading
+import json
 import time
 
 app = Flask(__name__)
 
-# This folder keeps you logged in (saves your cookies/session)
+# --- CONFIGURATION MANAGEMENT ---
+CONFIG_FILE = os.path.join(os.getcwd(), "config.json")
 USER_DATA_DIR = os.path.join(os.getcwd(), "browser_profile")
 
-def run_browser_logic(meeting_url):
-    """This function runs in the background so it doesn't block n8n"""
-    print(f"Background process started for: {meeting_url}")
-    
-    with sync_playwright() as p:
-        # Launching with persistent context to skip future logins
-        browser_context = p.chromium.launch_persistent_context(
-            user_data_dir=USER_DATA_DIR,
-            headless=False,
-            viewport={'width': 1280, 'height': 720},
-            permissions=['camera', 'microphone'],
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--use-fake-ui-for-media-stream", 
-                "--use-fake-device-for-media-stream"
-            ] 
-        )
-        
-        page = browser_context.pages[0]
-        page.goto(meeting_url)
-        
-        # --- 1. AUTO-LOGIN CHECK ---
-        try:
-            # Check if password field exists
-            password_input = page.locator('input[type="password"]').first
-            password_input.wait_for(state="visible", timeout=5000)
-            
-            print("Password screen detected. Entering password...")
-            password_input.fill("#Possible1")
-            page.keyboard.press("Enter")
-            page.wait_for_load_state("networkidle")
-        except Exception:
-            print("No login required or already logged in.")
+def load_config():
+    if not os.path.exists(CONFIG_FILE):
+        default_config = {
+            "whatsapp_number": "",
+            "allowed_classes": "devops, scd lab",
+            "bridge_email": "",
+            "bridge_password": "",
+            "success_message": "✅ Bot Status: I have successfully joined the class! 🎓"
+        }
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(default_config, f, indent=4)
+        return default_config
+    with open(CONFIG_FILE, 'r') as f:
+        return json.load(f)
 
-        # Wait for UI to settle
-        page.wait_for_timeout(5000) 
+# --- ROUTES ---
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-        # --- 2. MUTE MICROPHONE ---
-        try:
-            mic_button = page.locator('[aria-label*="microphone" i]').first
-            mic_button.click(timeout=3000)
-            print("Microphone muted.")
-        except Exception:
-            page.mouse.click(420, 660) # Coordinate fallback
-            
-        page.wait_for_timeout(1000)
+@app.route('/api/config', methods=['GET', 'POST'])
+def handle_config():
+    if request.method == 'POST':
+        data = request.json
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(data, f, indent=4)
+        return jsonify({"status": "saved"})
+    return jsonify(load_config())
 
-        # --- 3. MUTE CAMERA ---
-        try:
-            cam_button = page.locator('[aria-label*="camera" i]').first
-            cam_button.click(timeout=3000)
-            print("Camera turned off.")
-        except Exception:
-            page.mouse.click(480, 660) # Coordinate fallback
+@app.route('/api/n8n_settings', methods=['GET'])
+def n8n_settings():
+    # n8n uses this to get your phone/classes/email creds dynamically
+    return jsonify(load_config())
 
-        page.wait_for_timeout(1000)
-
-        # --- 4. JOIN BUTTON ---
-        join_texts = ["Join now", "Ask to join", "Switch here", "Join"]
-        joined = False
-        
-        for text in join_texts:
-            try:
-                locator = page.get_by_text(text, exact=True).first
-                if locator.is_visible(timeout=2000):
-                    locator.click()
-                    print(f"Clicked '{text}' button.")
-                    joined = True
-                    break
-            except Exception:
-                continue
-        
-        if not joined:
-            page.mouse.click(900, 450) # Coordinate fallback
-            print("Clicked Join area via coordinates.")
-
-        # Keep browser open for 1 hour
-        print("Bot is now in the meeting. Background thread will stay alive for 1 hour.")
-        page.wait_for_timeout(3600000) 
-        
-        browser_context.close()
-        print("1 hour reached. Browser closed.")
-
-@app.route('/join', methods=['POST'])
+@app.route('/join', methods=['GET'])
 def join_meeting():
-    data = request.json
-    meeting_url = data.get('url')
+    meet_url = request.args.get('url')
+    if not meet_url:
+        return jsonify({"error": "No URL provided"}), 400
+    
+    # Run browser in a background thread so n8n isn't kept waiting
+    threading.Thread(target=run_browser_logic, args=(meet_url,)).start()
+    return jsonify({"status": "Launching browser", "url": meet_url})
 
-    if not meeting_url:
-        return jsonify({"error": "No meeting URL provided"}), 400
+# --- BROWSER LOGIC ---
+def run_browser_logic(url):
+    with sync_playwright() as p:
+        browser = p.chromium.launch_persistent_context(
+            user_data_dir=USER_DATA_DIR,
+            headless=False, # Set to True once you've logged into Google once
+            args=["--use-fake-ui-for-media-stream"] # Bypasses mic/cam prompts
+        )
+        page = browser.new_page()
+        print(f"[*] Navigating to: {url}")
+        page.goto(url)
+        
+        # Give time for initial load
+        time.sleep(5)
+        
+        try:
+            # Step 1: Dismiss "Receive notifications" popup
+            try:
+                not_now = page.get_by_role("button", name="Not now")
+                not_now.wait_for(state="visible", timeout=5000)
+                not_now.click()
+                print("[V] Dismissed notification popup.")
+                time.sleep(1)
+            except Exception:
+                pass
 
-    # START THE THREAD: This is the critical part!
-    # It launches the browser logic but returns a response to n8n immediately.
-    bot_thread = threading.Thread(target=run_browser_logic, args=(meeting_url,))
-    bot_thread.start()
+            # Step 2: Dismiss any other overlay via Escape
+            page.keyboard.press("Escape")
+            time.sleep(1)
 
-    print("Success response sent to n8n. Browser is handling the rest...")
-    return jsonify({
-        "status": "success", 
-        "message": "Bot is joining the meeting in the background!"
-    }), 200
+            # Step 3: Turn off camera using the PRE-JOIN screen toggle button
+            # These are the actual aria-labels on the pre-join screen
+            cam_selectors = [
+                '[data-tooltip="Turn off camera"]',
+                '[aria-label="Turn off camera"]',
+                '[aria-label="Turn off camera (Ctrl+E)"]',
+                'div[data-is-muted="false"][data-tooltip*="camera"]',
+            ]
+            cam_turned_off = False
+            for sel in cam_selectors:
+                try:
+                    btn = page.locator(sel).first
+                    if btn.is_visible(timeout=2000):
+                        btn.click()
+                        print("[V] Camera turned off via pre-join button.")
+                        cam_turned_off = True
+                        time.sleep(1)
+                        break
+                except Exception:
+                    continue
+
+            # Step 4: Also try keyboard shortcut as backup
+            if not cam_turned_off:
+                page.keyboard.down("Control")
+                page.keyboard.press("e")
+                page.keyboard.up("Control")
+                print("[V] Camera toggle attempted via Ctrl+E.")
+                time.sleep(1)
+
+            # Step 5: Mute mic
+            try:
+                mic_selectors = [
+                    '[data-tooltip="Turn off microphone"]',
+                    '[aria-label="Turn off microphone"]',
+                    '[aria-label="Turn off microphone (Ctrl+D)"]',
+                ]
+                for sel in mic_selectors:
+                    btn = page.locator(sel).first
+                    if btn.is_visible(timeout=2000):
+                        btn.click()
+                        print("[V] Mic turned off via pre-join button.")
+                        time.sleep(1)
+                        break
+            except Exception:
+                page.keyboard.down("Control")
+                page.keyboard.press("d")
+                page.keyboard.up("Control")
+                print("[V] Mic toggle attempted via Ctrl+D.")
+                time.sleep(1)
+
+            # Step 6: Dismiss "Camera not found" popup if it appeared
+            try:
+                close_btn = page.locator('[aria-label="Close dialog"]').first
+                if close_btn.is_visible(timeout=2000):
+                    close_btn.click()
+                    print("[V] Dismissed Camera not found dialog.")
+            except Exception:
+                pass
+            try:
+                # The X button on the camera popup
+                page.locator('xpath=//div[@role="alertdialog"]//button').first.click()
+                time.sleep(0.5)
+            except Exception:
+                pass
+
+            # Step 7: Click Join now
+            join_locators = [
+                page.get_by_role("button", name="Join now"),
+                page.get_by_role("button", name="Ask to join"),
+                page.get_by_role("button", name="Join now without camera"),
+                page.locator('button[jsname="Qx7uuf"]').first,
+            ]
+
+            joined = False
+            for locator in join_locators:
+                try:
+                    if locator.is_visible(timeout=3000):
+                        locator.click()
+                        print("[V] Clicked Join Button.")
+                        joined = True
+                        break
+                except Exception:
+                    continue
+
+            if not joined:
+                print("[!] Could not find Join button.")
+            
+            # Stay in meeting for 1 hour (3600 seconds)
+            time.sleep(3600)
+            
+        except Exception as e:
+            print(f"[!] Error during automation: {e}")
+        finally:
+            browser.close()
 
 if __name__ == '__main__':
-    # Listen on 0.0.0.0 so Docker can communicate
     app.run(host='0.0.0.0', port=5000)

@@ -1,200 +1,178 @@
-# Auto-Attendance-Bot-N8N-Node-Docker-Python
+# Auto-Attendance-Bot — Setup Guide
 
-An automated attendance bot that listens for Google Meet links via WhatsApp (Groups or Direct Messages) and Google Classroom email notifications. Once a link is detected, it triggers a local Python script using Playwright to automatically open a browser, mute the microphone and camera, and join the class on your behalf.
+An automated attendance bot that listens for Google Meet links via WhatsApp (groups or DMs) and Google Classroom email notifications. Once a link is detected, it opens a browser, turns off the mic and camera, and joins the class on your behalf. After joining, it sends you a WhatsApp confirmation message.
 
 ---
 
-## Features
+## How It Works
 
-- **Multi-Trigger System:** Detects Google Meet links via WhatsApp messages or Google Classroom email announcements.
-- **Smart Routing:** Auto-replies to the exact WhatsApp group or private chat that sent the link.
-- **Classroom Filtering:** Only joins classes that match a predefined "Allowed List" (ignores random links).
-- **Bypass IT Blocks:** Uses an email forwarding bridge to bypass strict University IMAP restrictions.
-- **Auto-Mute & Join:** Uses Playwright to handle the browser UI, skip login screens (via persistent sessions), mute audio/video, and click the "Join" button automatically.
-- **Non-Blocking Architecture:** Python uses threading to instantly notify n8n of success while staying in the meeting for the duration of the class.
+```
+WhatsApp Message ──► n8n Webhook ──► Fetch Settings ──► Merge ──► Code ──► IsAllowed? ──► Join ──► Notify
+                                                                     ▲
+Gmail (IMAP) ────► n8n Email Trigger ──► Fetch Settings ──► Update IMAP Creds ──► Pass Settings ──► Merge ──┘
+```
+
+- **WhatsApp trigger:** Any Meet link sent to a group or DM where the bot is present is auto-joined immediately — no class name check.
+- **Email trigger:** Only joins if the email contains a Meet URL and the class name matches your allowed list (leave the list empty to allow all classes).
 
 ---
 
 ## Prerequisites
 
-- **Docker & Docker Compose** (for running n8n and Evolution API)
-- **Python 3.10+**
-- A secondary/personal Gmail account (to act as an email bridge)
-- A WhatsApp account (to act as the trigger and sender)
+- Windows PC (the `.bat` launcher handles everything else)
+- Docker Desktop installed (the launcher will install it if missing)
+- A secondary/personal Gmail account (used as the email bridge)
+- A WhatsApp account (used to trigger the bot and receive confirmations)
 
 ---
 
-## Setup Guide
+## File Structure
 
-### Step 1: Spin Up n8n and Evolution API
-
-Navigate to the local infrastructure folder and start the Docker containers. This will boot up your automation engine (n8n) and your WhatsApp API (Evolution).
-
-```bash
-cd local-browser-bridge
-docker-compose up -d
 ```
-
-| Service | URL |
-|---|---|
-| n8n | `http://localhost:5678` |
-| Evolution API | `http://localhost:8080` |
+project/
+├── local-browser-bridge/
+│   └── docker-compose.yml       ← Runs n8n + Evolution API (WhatsApp)
+├── python-bot/
+│   ├── app.py                   ← Flask server + Playwright browser bot
+│   ├── config.json              ← Your settings (auto-created on first run)
+│   └── templates/
+│       └── index.html           ← Web control panel (http://localhost:5000)
+├── attendance_workflow.json     ← n8n workflow to import
+└── start_bot.bat                ← Double-click to start everything
+```
 
 ---
 
-### Step 2: Connect Your WhatsApp & Set the Webhook
+## Step 1: Start Everything
 
-You need to link your personal WhatsApp to Evolution API and tell it to forward incoming messages to n8n.
+Run the launcher for your operating system:
 
-**1. Get your n8n Webhook URL**
+**Windows** — Double-click **`start_bot.bat`**
 
-Open n8n, double-click the very first **Webhook** node, and copy the Production URL. It will look like:
-```
-http://n8n:5678/webhook/whatsapp
-```
-or
-```
-http://YOUR_IP:5678/webhook/whatsapp
+**Linux / macOS** — Open a terminal in the project folder and run:
+```bash
+chmod +x start_bot.sh
+./start_bot.sh
 ```
 
-**2. Create the Bot Instance & Set the Webhook**
+Both launchers automatically:
+1. Install Docker if not found (Windows asks for a reboot, Linux asks you to log out and back in)
+2. Start n8n (`http://localhost:5678`) and Evolution API (`http://localhost:8080`)
+3. Create a Python virtual environment, install Flask and Playwright
+4. Open the control panel at `http://localhost:5000`
+5. Start the Python bot server
 
-Run this command in your terminal to create the instance and configure the webhook simultaneously. Replace `YOUR_SECRET_KEY` and the `url` value if necessary:
+> ⚠️ **Do not close the terminal window** while you want the bot to be active.
+
+---
+
+## Step 2: Import the n8n Workflow
+
+1. Open **`http://localhost:5678`** and create an account if prompted.
+2. Go to **Workflows** → **Import from File**.
+3. Select `attendance_workflow.json`.
+4. Click **Save** then **Activate** (toggle in top-right).
+
+---
+
+## Step 3: Connect Your WhatsApp
+
+**1. Create the Bot Instance**
+
+Run this in your terminal (or PowerShell):
 
 ```bash
-curl -X POST "http://localhost:8080/instance/create" -H "apikey: YOUR_SECRET_KEY" -H "Content-Type: application/json" -d '{"instanceName": "ClassBot", "qrcode": true, "webhook_url": "http://host.docker.internal:5678/webhook/whatsapp", "webhook_by_events": false, "webhook_events": ["MESSAGES_UPSERT"]}'
+curl -X POST "http://localhost:8080/instance/create" \
+  -H "apikey: hashim_secret_key" \
+  -H "Content-Type: application/json" \
+  -d "{\"instanceName\": \"ClassBot\", \"qrcode\": true, \"webhook_url\": \"http://host.docker.internal:5678/webhook/whatsapp\", \"webhook_by_events\": false, \"webhook_events\": [\"MESSAGES_UPSERT\"]}"
 ```
 
-**3. Scan the QR Code**
+**2. Scan the QR Code**
 
-The API will return a base64 image or a terminal QR code. On your phone:
+The response will contain a QR code. On your phone:
+> **WhatsApp → Linked Devices → Link a Device → Scan QR**
 
-> **WhatsApp** → **Linked Devices** → **Link a Device** → Scan the QR code
-
-**4. Enable Group Messages**
-
-By default, Evolution API ignores group chats. Run this command to force it to listen to your university groups:
+**3. Enable Group Messages**
 
 ```bash
 curl -X POST "http://localhost:8080/settings/set/ClassBot" \
-  -H "apikey: YOUR_SECRET_KEY" \
+  -H "apikey: hashim_secret_key" \
   -H "Content-Type: application/json" \
-  -d '{
-    "reject_call": false,
-    "groups_ignore": false,
-    "always_online": true,
-    "read_messages": false,
-    "read_status": false,
-    "sync_full_history": false
-  }'
+  -d "{\"reject_call\": false, \"groups_ignore\": false, \"always_online\": true, \"read_messages\": false, \"read_status\": false, \"sync_full_history\": false}"
 ```
 
 ---
 
-### Step 3: Set Up the Python Playwright Bot
+## Step 4: Configure the Settings (Control Panel)
 
-This script controls the actual browser interactions.
+Open **`http://localhost:5000`** in your browser. Fill in all fields and click **Save & Apply Settings**.
 
-**1. Navigate to the Python bot directory:**
+| Field | What to Enter |
+|---|---|
+| **Phone Number** | Your WhatsApp number — country code, no `+`. Example: `923123456789` |
+| **Allowed Class Names** | Comma-separated class names in lowercase. Example: `devops a a, scd lab fall 2025`. Leave **empty** to join all classes. |
+| **Bridge Gmail Address** | Your personal Gmail (e.g. `you@gmail.com`) |
+| **Gmail App Password** | 16-character app password from Google (see below) |
+| **n8n API Key** | Get it from n8n → **Settings** (bottom-left) → **n8n API** → **Create an API key** |
 
-```bash
-cd python-bot
-```
-
-**2. Set up your virtual environment and install dependencies:**
-
-```bash
-python -m venv venv
-
-# On Windows:
-venv\Scripts\activate
-
-# On Mac/Linux:
-source venv/bin/activate
-
-pip install flask playwright
-playwright install chromium
-```
-
-**3. Run the Flask server:**
-
-```bash
-python app.py
-```
-
-> **Note:** The first time it runs, you may need to manually log in to Google. The session will be saved in the `browser_profile` folder for automatic logins going forward.
+### Getting a Gmail App Password
+1. Go to [myaccount.google.com/security](https://myaccount.google.com/security)
+2. Enable **2-Step Verification** if not already on
+3. Search for **"App passwords"** → Create one → Select **Mail** → Copy the 16-character key
 
 ---
 
-### Step 4: Import the n8n Workflow
+## Step 5: Set Up the Email Bridge
 
-1. Open n8n at `http://localhost:5678`.
-2. Go to **Workflows** → **Import from File**.
-3. Select the `attendance workflow.json` file from this repository.
-4. Open the **HTTP Request1** node (the WhatsApp confirmation node) and ensure the URL points to your Evolution API container:
-   ```
-   http://host.docker.internal:8080/message/sendText/ClassBot
-   ```
-5. Verify your API Key is correctly set in the request Header.
+The bot reads emails from your personal Gmail to catch Google Classroom announcements.
 
----
+**In your university `.edu` email:**
+1. Go to **Settings → Forwarding**
+2. Add a forwarding address: your personal Gmail
+3. Create a filter:
+   - **From:** `no-reply@classroom.google.com`
+   - **Action:** Forward to your personal Gmail
 
-### Step 5: Configure the Google Classroom Email Bridge
-
-To bypass university IT restrictions on IMAP, use a personal Gmail account to catch forwarded notifications.
-
-1. Create an **App Password** in your personal Google Account under **Security Settings**.
-2. In n8n, open the **Email Trigger (IMAP)** node and enter your personal email credentials and App Password. Set it to only fetch `["UNSEEN"]` emails.
-3. In your University `.edu` email settings, create an auto-forwarding rule:
-   > Forward all emails from `no-reply@classroom.google.com` → your personal Gmail address.
+**That's it.** The n8n workflow automatically updates the IMAP credentials using the values from your control panel — no manual setup in n8n is needed.
 
 ---
 
-### Step 6: Customize Your Allowed Classes
+## Step 6: Log In to Google (First Time Only)
 
-Open the **Code in JavaScript** node in n8n and update the `allowedClasses` array with the exact names of the classes you want to attend.
+The bot uses a persistent browser profile so it only needs to log in once.
 
-> **All class names must be written in lowercase.**
+1. The first time `app.py` runs, a Chromium window will open.
+2. Manually navigate to [meet.google.com](https://meet.google.com) and sign in with your Google account.
+3. Close the browser.
+4. From now on the bot will use the saved session automatically.
 
-```javascript
-const allowedClasses = [
-  "devops a a",
-  "scd lab fall 2025",
-  "software engineering"
-];
-```
+> The session is stored in `python-bot/browser_profile/`. If the bot ever gets logged out, just delete that folder and log in again.
 
 ---
 
-### Step 7: Set Your WhatsApp Number for Confirmations
-
-Because WhatsApp Web/Desktop sometimes sends a linked device ID (`@lid`) instead of a real phone number, you need to hardcode your phone number so the bot always knows where to send private confirmation messages.
-
-1. In n8n, open the **HTTP Request1** node (the final node that sends the WhatsApp message).
-2. In the **Body** section, replace `923XXXXXXXXX` with your actual number — no plus sign, no spaces.
-
-```json
-{
-  "number": "{{ $('Webhook').item.json.body.data.key.remoteJid.includes('@g.us') ? $('Webhook').item.json.body.data.key.remoteJid : '923XXXXXXXXX@s.whatsapp.net' }}",
-  "textMessage": {
-    "text": "Bot Status: I have successfully joined the class!"
-  }
-}
-```
-
-> **How smart routing works:** If the Meet link came from a group chat, the bot replies to that group. If it came from a private chat or an email trigger, it sends the confirmation directly to your hardcoded number.
-
----
-
-## Testing the Flow
+## Testing the Bot
 
 | Trigger | How to Test |
 |---|---|
-| **WhatsApp** | Send a Google Meet link in a group or DM where the bot is present. n8n catches it → Python opens the browser → you receive a WhatsApp confirmation. |
-| **Email** | Forward an old Google Classroom email to your bridge Gmail address and mark it as **Unread**. n8n will pick it up on the next poll cycle. |
+| **WhatsApp** | Send a Google Meet link in any group or DM where the bot's WhatsApp is present. The bot joins automatically and sends you a confirmation. |
+| **Email** | Forward an old Google Classroom email to your bridge Gmail and mark it as **Unread**. The bot will pick it up on the next poll. |
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| Bot joins but camera is still on | Make sure `app.py` is the latest version. The bot clicks the camera off button on the pre-join screen before joining. |
+| `isAllowed: false` for a class you added | Make sure the class name in the allowed list exactly matches the text in the email, all lowercase. The bot strips HTML and searches the full email body. |
+| WhatsApp confirmation not sending | Check that your phone number in the control panel has no `+` sign and no spaces. |
+| n8n workflow shows `UpdateIMAPCredential` error | Make sure you saved a valid n8n API key in the control panel (no extra spaces). Get it from n8n → Settings (bottom-left) → n8n API. |
+| Bot stopped logging in to Google | Delete `python-bot/browser_profile/` and log in to Google manually again in the Chromium window. |
+| Docker not starting | Run `start_bot.bat` as Administrator, or open Docker Desktop manually and wait for it to fully start. |
 
 ---
 
 ## Disclaimer
 
-This tool is for educational purposes only. Use responsibly and ensure compliance with your institution's attendance policies.
+This tool is for educational and personal productivity purposes only. Use responsibly and ensure compliance with your institution's attendance policies.

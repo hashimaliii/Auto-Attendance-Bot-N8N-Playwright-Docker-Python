@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance Bot — Control Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #f8f9fb; --surface: #ffffff; --border: #e2e6ec;
+            --border-focus: #2563eb; --text: #0f172a; --muted: #64748b;
+            --label: #374151; --accent: #2563eb; --accent-light: #eff6ff;
+            --success: #16a34a; --success-bg: #f0fdf4;
+            --error: #dc2626; --error-bg: #fef2f2;
+            --warn: #92400e; --warn-bg: #fffbeb; --section-num: #cbd5e1;
+        }
+        body {
+            background: var(--bg); color: var(--text);
+            font-family: 'DM Sans', sans-serif; font-size: 14px;
+            line-height: 1.6; min-height: 100vh; padding: 48px 16px 64px;
+        }
+        .shell { max-width: 640px; margin: 0 auto; }
+        .page-header { margin-bottom: 36px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+        .page-header h1 { font-size: 1.35rem; font-weight: 600; letter-spacing: -0.02em; }
+        .page-header p { margin-top: 4px; color: var(--muted); font-size: 0.85rem; }
+        .section { margin-bottom: 32px; }
+        .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .section-num { font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--section-num); font-weight: 500; letter-spacing: 0.05em; min-width: 20px; }
+        .section-title { font-size: 0.8rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+        .section-line { flex: 1; height: 1px; background: var(--border); }
+        .section-body { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+        .field { display: flex; flex-direction: column; gap: 5px; }
+        .field label { font-size: 0.8rem; font-weight: 500; color: var(--label); }
+        .field input, .field textarea {
+            width: 100%; background: var(--bg); border: 1px solid var(--border);
+            border-radius: 6px; padding: 9px 12px;
+            font-family: 'DM Sans', sans-serif; font-size: 0.875rem;
+            color: var(--text); outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .field input::placeholder, .field textarea::placeholder { color: #adb5bd; }
+        .field input:focus, .field textarea:focus {
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px #2563eb18; background: #fff;
+        }
+        .field textarea { resize: vertical; min-height: 80px; }
+        .field input[type="password"] { font-family: 'DM Mono', monospace; letter-spacing: 0.1em; }
+        .hint { font-size: 0.78rem; color: var(--muted); line-height: 1.5; }
+        .hint a { color: var(--accent); text-decoration: none; font-weight: 500; }
+        .hint a:hover { text-decoration: underline; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        @media (max-width: 500px) { .grid-2 { grid-template-columns: 1fr; } }
+        .input-wrap { position: relative; }
+        .input-wrap input { padding-right: 72px; }
+        .toggle-btn {
+            position: absolute; right: 1px; top: 1px; bottom: 1px; padding: 0 12px;
+            background: var(--bg); border: none; border-left: 1px solid var(--border);
+            border-radius: 0 5px 5px 0; font-family: 'DM Mono', monospace;
+            font-size: 0.72rem; font-weight: 500; color: var(--muted);
+            cursor: pointer; transition: color 0.15s, background 0.15s; letter-spacing: 0.05em;
+        }
+        .toggle-btn:hover { color: var(--accent); background: var(--accent-light); }
+        .notice {
+            background: var(--warn-bg); border: 1px solid #fde68a;
+            border-radius: 6px; padding: 10px 14px;
+            font-size: 0.78rem; color: var(--warn); line-height: 1.5;
+        }
+        .btn-save {
+            width: 100%; padding: 11px; background: var(--accent); color: #fff;
+            font-family: 'DM Sans', sans-serif; font-size: 0.875rem; font-weight: 600;
+            border: none; border-radius: 8px; cursor: pointer;
+            letter-spacing: 0.01em; transition: background 0.15s, transform 0.1s; margin-top: 8px;
+        }
+        .btn-save:hover { background: #1d4ed8; }
+        .btn-save:active { transform: scale(0.99); }
+        .alert { border-radius: 8px; padding: 12px 16px; font-size: 0.83rem; margin-top: 12px; display: none; }
+        .alert.success { background: var(--success-bg); color: var(--success); border: 1px solid #bbf7d0; display: block; }
+        .alert.error   { background: var(--error-bg);   color: var(--error);   border: 1px solid #fecaca; display: block; }
+        footer { margin-top: 40px; text-align: center; font-size: 0.75rem; color: var(--section-num); font-family: 'DM Mono', monospace; }
+    </style>
+</head>
+<body>
+<div class="shell">
+
+    <div class="page-header">
+        <h1>Attendance Bot</h1>
+        <p>Control Panel &amp; Configuration</p>
+    </div>
+
+    <form id="configForm">
+
+        <div class="section">
+            <div class="section-header">
+                <span class="section-num">01</span>
+                <span class="section-title">WhatsApp</span>
+                <div class="section-line"></div>
+            </div>
+            <div class="section-body">
+                <div class="field">
+                    <label>Receiver Phone Number</label>
+                    <input type="text" id="whatsapp_number" placeholder="923123456789">
+                    <span class="hint">Country code, no + sign, no spaces.</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <span class="section-num">02</span>
+                <span class="section-title">Classroom Filter</span>
+                <div class="section-line"></div>
+            </div>
+            <div class="section-body">
+                <div class="field">
+                    <label>Allowed Class Names</label>
+                    <textarea id="allowed_classes" placeholder="devops a a, scd lab fall 2025, software engineering"></textarea>
+                    <span class="hint">Comma-separated, lowercase. If left empty, the bot joins <strong>all</strong> classes.</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <span class="section-num">03</span>
+                <span class="section-title">Email Bridge</span>
+                <div class="section-line"></div>
+            </div>
+            <div class="section-body">
+                <div class="grid-2">
+                    <div class="field">
+                        <label>Gmail Address</label>
+                        <input type="email" id="bridge_email" placeholder="you@gmail.com">
+                    </div>
+                    <div class="field">
+                        <label>App Password</label>
+                        <input type="password" id="bridge_password" placeholder="xxxx xxxx xxxx xxxx">
+                    </div>
+                </div>
+                <span class="hint">
+                    Requires a 16-character
+                    <a href="https://myaccount.google.com/apppasswords" target="_blank">Google App Password</a>
+                    — enable 2-Step Verification on your Google account first.
+                </span>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <span class="section-num">04</span>
+                <span class="section-title">n8n Integration</span>
+                <div class="section-line"></div>
+            </div>
+            <div class="section-body">
+                <div class="field">
+                    <label>API Key</label>
+                    <div class="input-wrap">
+                        <input type="password" id="n8n_api_key" placeholder="n8n_api_xxxxxxxxxxxxxxxx">
+                        <button type="button" class="toggle-btn" id="toggleKey">Show</button>
+                    </div>
+                    <span class="hint">
+                        Open <a href="http://localhost:5678/settings/api" target="_blank">n8n Settings &rarr; n8n API</a> &rarr; <strong>Create an API key</strong> &rarr; paste here.
+                    </span>
+                </div>
+                <div class="notice">
+                    Required — the bot uses this key to automatically sync your Gmail credentials with n8n.
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn-save">Save Configuration</button>
+    </form>
+
+    <div id="alertBox" class="alert"></div>
+
+    <footer>Keep start_bot.bat running while the bot is active.</footer>
+
+</div>
+<script>
+    const alertBox = document.getElementById('alertBox');
+
+    function safeVal(val) {
+        if (typeof val === 'string' && val.includes('<') && val.includes('>')) return '';
+        return val || '';
+    }
+
+    fetch('/api/config')
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('whatsapp_number').value = safeVal(data.whatsapp_number);
+            document.getElementById('allowed_classes').value = safeVal(data.allowed_classes);
+            document.getElementById('bridge_email').value    = safeVal(data.bridge_email);
+            document.getElementById('bridge_password').value = safeVal(data.bridge_password);
+            document.getElementById('n8n_api_key').value     = safeVal(data.n8n_api_key);
+        });
+
+    document.getElementById('configForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const configData = {
+            whatsapp_number: document.getElementById('whatsapp_number').value,
+            allowed_classes: document.getElementById('allowed_classes').value,
+            bridge_email:    document.getElementById('bridge_email').value,
+            bridge_password: document.getElementById('bridge_password').value,
+            n8n_api_key:     document.getElementById('n8n_api_key').value.trim(),
+            success_message: "Bot Status: I have successfully joined the class."
+        };
+        try {
+            const res = await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(configData)
+            });
+            alertBox.className = res.ok ? 'alert success' : 'alert error';
+            alertBox.innerText = res.ok
+                ? 'Configuration saved successfully.'
+                : 'Failed to save. Check that the server is running.';
+        } catch {
+            alertBox.className = 'alert error';
+            alertBox.innerText = 'Could not connect to server. Is start_bot.bat running?';
+        }
+    });
+
+    document.getElementById('toggleKey').addEventListener('click', function () {
+        const input = document.getElementById('n8n_api_key');
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        this.textContent = show ? 'Hide' : 'Show';
+    });
+</script>
+</body>
+</html>
